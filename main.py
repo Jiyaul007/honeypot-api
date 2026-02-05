@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Header, HTTPException
-import requests, re, os
+import requests
+import re
+import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 HF_API_KEY = os.getenv("HF_API_KEY")
@@ -9,18 +12,35 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 
+# -------------------------
+# ROOT ENDPOINT (IMPORTANT)
+# -------------------------
+@app.get("/")
+def root():
+    return {"status": "honeypot api running"}
+
+# Store conversations
 conversations = {}
 
+# -------------------------
+# Scam keyword detector
+# -------------------------
 def is_scam(text):
     keywords = ["lottery", "prize", "kyc", "urgent", "blocked", "verify", "account", "winner"]
     return any(word in text.lower() for word in keywords)
 
+# -------------------------
+# Extract bank, upi & links
+# -------------------------
 def extract_info(text):
     bank = re.findall(r"\d{9,18}", text)
     upi = re.findall(r"\w+@\w+", text)
     links = re.findall(r"https?://\S+", text)
     return bank, upi, links
 
+# -------------------------
+# AI reply using HuggingFace
+# -------------------------
 def ai_reply(history):
     prompt = f"""
 You are a normal Indian user.
@@ -33,8 +53,14 @@ Conversation:
 
 Reply:
 """
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    data = {"inputs": prompt}
+
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}"
+    }
+
+    data = {
+        "inputs": prompt
+    }
 
     try:
         res = requests.post(
@@ -59,6 +85,9 @@ Reply:
     except:
         return "Please share your bank or UPI details for verification."
 
+# -------------------------
+# Honeypot API Endpoint
+# -------------------------
 @app.post("/honeypot")
 def honeypot(data: dict, x_api_key: str = Header(None)):
 
