@@ -1,104 +1,36 @@
-from fastapi import FastAPI, Header, HTTPException
-import requests
-import re
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-HF_API_KEY = os.getenv("HF_API_KEY")
-API_KEY = os.getenv("API_KEY")
-
-app = FastAPI()
-
-# -------------------------
-# ROOT ENDPOINT (IMPORTANT)
-# -------------------------
-@app.get("/")
-def root():
-    return {"status": "honeypot api running"}
-
-# Store conversations
-conversations = {}
-
-# -------------------------
-# Scam keyword detector
-# -------------------------
-def is_scam(text):
-    keywords = ["lottery", "prize", "kyc", "urgent", "blocked", "verify", "account", "winner"]
-    return any(word in text.lower() for word in keywords)
-
-# -------------------------
-# Extract bank, upi & links
-# -------------------------
-def extract_info(text):
-    bank = re.findall(r"\d{9,18}", text)
-    upi = re.findall(r"\w+@\w+", text)
-    links = re.findall(r"https?://\S+", text)
-    return bank, upi, links
-
-# -------------------------
-# AI reply using HuggingFace
-# -------------------------
-def ai_reply(history):
-    prompt = f"""
-You are a normal Indian user.
-You are confused and polite.
-Slowly ask for payment or bank details.
-Never reveal that you suspect scam.
-
-Conversation:
-{history}
-
-Reply:
-"""
-
-    headers = {
-        "Authorization": f"Bearer {HF_API_KEY}"
-    }
-
-    data = {
-        "inputs": prompt
-    }
-
-    try:
-        res = requests.post(
-            "https://api-inference.huggingface.co/models/google/flan-t5-large",
-            headers=headers,
-            json=data,
-            timeout=20
-        )
-
-        result = res.json()
-
-        if isinstance(result, list) and len(result) > 0:
-            if "generated_text" in result[0]:
-                return result[0]["generated_text"]
-
-        if isinstance(result, dict):
-            if "generated_text" in result:
-                return result["generated_text"]
-
-        return "Please share your bank or UPI details for verification."
-
-    except:
-        return "Please share your bank or UPI details for verification."
-
-# -------------------------
-# Honeypot API Endpoint
-# -------------------------
 @app.post("/honeypot")
-def honeypot(data: dict, x_api_key: str = Header(None)):
+def honeypot(data: dict = None, x_api_key: str = Header(None)):
 
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # If no body sent (tester case)
+    if data is None:
+        return {
+            "scam_detected": False,
+            "agent_activated": False,
+            "reply": "Honeypot API is alive",
+            "extracted_intelligence": {
+                "bank_accounts": [],
+                "upi_ids": [],
+                "phishing_links": []
+            }
+        }
 
     cid = data.get("conversation_id")
     msg = data.get("message")
 
     if not cid or not msg:
-        raise HTTPException(status_code=400, detail="conversation_id and message required")
+        return {
+            "scam_detected": False,
+            "agent_activated": False,
+            "reply": "Invalid input format",
+            "extracted_intelligence": {
+                "bank_accounts": [],
+                "upi_ids": [],
+                "phishing_links": []
+            }
+        }
 
     if cid not in conversations:
         conversations[cid] = []
